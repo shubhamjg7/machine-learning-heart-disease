@@ -1,0 +1,341 @@
+---
+title: "Analysis of Categorical Data - Phase 2"
+author: "Project Group Name : Project Groups 77"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Members:
+
+
+* Shubham Gupta - s3806186
+
+## Plausible causes of Heart Disease (UCI Analysis of Heart Disease)
+
+## Table of contents :
+
+* [Task 1: Introduction](#intro)
+* [Task 2: Statistical Modelling](#sm)
+  * [Task 2.1: Model Fitting](#mf)
+  * [Task 2.2: Residual Analysis](#resid)
+  * [Task 2.3: Response Analysis](#resp)
+  * [Task 2.4: Goodness of Fit](#gof)
+  * [Task 2.5: Confidence Interval](#ci)
+  * [Task 2.6: Hypothesis Tests](#ht)
+  * [Task 2.7: Sensitivity Analysis](#sa)
+* [Task 3: Critique and Limitations](#cl)
+* [Task 4: Summary and Conclusions](#sc)
+* [References](#ref)
+
+## Task 1: Introduction<a name="intro"></a>
+
+The goal of this project is to identify the features or set of features which contribute in determining whether a person has heart disease or not. Our dataset has a binary response variable `target` with two possible values : 0 indicating that the patient does not have a heart disease and 1 indicating that the patient has a heart disease. 
+
+The data was sourced from the following site : 
+
+Heart Disease UCI. Kaggle.com. (2020). Retrieved 28 October 2020, from <a href="https://www.kaggle.com/ronitf/heart-disease-uci">https://www.kaggle.com/ronitf/heart-disease-uci</a>.
+
+Phase 1 of the above project dealt with the initial preliminary analysis and cleaning of data. It also dealt with data exploration to identify interesting patterns and trends among the features. In the final stage of the phase 1 report the data was encoded and was made ready for modeling which will be used in this phase.
+
+#### Methodology : 
+In order to further investigate the probability for a person to suffer from a heart condition we implemented a logistic regression model. In our logistic regression model our response variable was `target` with two possible values ‘0’ and ‘1’ where they represent not a heart condition and a heart condition respectively. Along with the response variable a number of independent variables such as `age`, `sex`, `exang` , etc. were used in the analysis.
+
+Phase 2 of this project began with fitting of the full logistic regression model followed by the fitting of the reduced model. We then performed the residual analysis on the model. This was then supplemented by plotting of the analysis results.
+We then plotted the response variable with a independent variable.To see the extent of the fit of our model we then did the goodness of fit test. Also, various hypothesis involving independent and response variables were tested. For sensitivity analysis we calculated the Odds ratio.
+
+
+## Task 2: Statistical Modelling<a name="sm"></a>
+
+#### Importing libraries
+
+```{r warning=FALSE, message=FALSE, results='hide'}
+
+library(MASS)
+library(ggplot2)
+library(arm)
+library(car)
+library(ResourceSelection)
+library(janitor) # for cross tab
+library(CGPfunctions) # for cross tab
+library(caret)
+library(pROC)
+library(MLmetrics)
+
+```
+
+#### Loading data
+
+```{r}
+# Reading data
+data <- read.csv(file  = "Project_Groups_77_Data.csv")
+head(data)
+```
+
+
+### Task 2.1: Model Fitting<a name="mf"></a>
+
+#### Fitting a full model
+
+In order to estimate our logistic regression model, we used the `glm()` function with all the features. The summary of the model was displayed using the `summary()` function.
+
+```{r}
+full.model <- glm(formula = target ~ ., family = binomial(link = logit), data = data)
+summary(full.model)
+```
+From the above output of the full model we can see that a lot of features do not have a significant impact on the target response variable. Hence, we need to eliminate some of these irrelevant features using feature selection technique.
+
+**Full model equation:**
+
+Logit(Probability of heart disease) ~ 3.514572 - 0.0005734 * age - 1.5149396 * sex - 0.0170729 * trestbps - 0.0043317 * chol + 0.1764007 * fbs + 0.0171314 * thalach - 0.7630837 * exang - 0.4892926 * oldpeak - 0.8331781 * ca - 2.0159122 * cp_0 - 1.0326821 * cp_1 - 0.0706805 * cp_2 + 0.2767289 * restecg_0 + 0.8469354 * restecg_1 - 0.2015612 * slope_0 - 0.9212254 * slope_1 - 0.4732491 * thal_0 + 1.3414378 * thal_1 + 1.3800697 * thal_2
+
+Note: We have excluded `cp_3`, `restecg_2`, `slope_2`, and `thal_3` as the coefficients for these variables was `NA`. This is because information in these columns can be determined from other related columns which were created during encoding process i.e. high correlation between other columns in the data leads to exclusion of these columns from the model.
+
+#### Fitting a reduced model
+
+We estimated the reduced model using `StepAIC()` function where features with least significance were eliminated using both forward alternating and backward alternating step wise selection.
+
+```{r}
+step.model <- stepAIC(full.model, direction = "both", trace = FALSE)
+summary(step.model)
+```
+
+**Reduced model equation:**
+
+Logit(Probability of heart disease) ~ 2.59 - 1.315 * sex - 0.016 * trestbps + 0.016 * thalach - 0.753 * exang - 0.523 * oldpeak - 0.814 * ca - 1.999 * cp_0 - 1.041 * cp_1 + 0.649 * restecg_1 - 0.908 * slope_1 + 1.434 * thal_1 + 1.442 * thal_2
+
+Analysis on one positive case:
+
+```{r}
+selected_cols <- c('sex','trestbps','thalach','exang','oldpeak','ca','cp_0','cp_1','restecg_1','slope_1','thal_1','thal_2')
+
+get.prediction <- function(row.in.consideration) {
+  prediction.on <- data[selected_cols][row.in.consideration, ]
+  real.val <- data['target'][row.in.consideration, ]
+  prediction <- predict(object = step.model, newdata = prediction.on, type = "response") * 100
+  cat("Is the patient in consideration having heart disease:", real.val, "\n")
+  print("Input values for patient in consideration:")
+  print(prediction.on)
+  cat("Probability of having heart disease using step.model:", round(prediction, 3), "%\n")
+}
+```
+
+
+```{r}
+row.in.consideration = 5
+get.prediction(row.in.consideration)
+```
+
+Analysis on one negative case:
+
+```{r}
+row.in.consideration = 253
+get.prediction(row.in.consideration)
+```
+
+#### Performance analysis of a reduced model
+
+Confusion matrix:
+
+```{r}
+confusionMatrix(factor(ifelse(fitted(step.model) > .5, 1, 0)), factor(data$target))$table
+```
+ROC-AUC Score:
+
+```{r}
+invisible(plot(roc(data$target,
+                   fitted(step.model)),
+               col = "red", print.auc = T,
+               main = "ROC curve"))
+```
+
+Precision, Recall and F1 Score:
+
+```{r}
+
+pred <- ifelse(step.model$fitted.values < 0.5, 0, 1)
+
+prec <- Precision(y_pred = pred, y_true = data$target, positive = 1)
+reca <- Recall(y_pred = pred, y_true = data$target, positive = 1)
+f1 <- F1_Score(y_pred = pred, y_true = data$target, positive = 1)
+
+cat("Precision Score: ", prec, "\n")
+cat("Recall Score: ", reca, "\n")
+cat("F1 Score: ", f1, "\n")
+
+```
+
+Recall is the metric of choice for this model as we do not want to wrongly classify a person with heart disease as a healthy person. On the other hand, it is acceptable if we classify a healthy individual as having heart disease because further diagnosis can be easily performed to confirm that the case was a false positive. Hence a good recall score indicates that we have a model with good performance. We will confirm this with further statistical analysis.
+
+### Task 2.2: Residual Analysis<a name="resid"></a>
+
+#### Standardized residuals vs trestbps
+
+```{r}
+stand.resid <- rstandard(model = step.model, type = "pearson")
+plot(x = data$trestbps, y = stand.resid, ylim = c(min(-3, stand.resid), max(3, stand.resid)), ylab = "Standardized Pearson residuals", xlab = "trestbps")
+abline(h = c(-3,-2,0,2,3), lty = "dotted", col = "red")
+
+ord.dist1 <- order(data$trestbps)
+smooth.stand1 <- loess(formula = target ~ trestbps, data = data)
+lines(x = data$trestbps[ord.dist1], y = predict(smooth.stand1)[ord.dist1],lty = "solid", col = "red")
+```
+
+Looking at standardized pearson residuals for `trestbps` explanatory variable, we can see that variance throughout the range is same except for few outliers. This tells us that the current form of `trestbps` is appropriate for the model.
+
+From the loess curve, it seems that standardized predicted to residuals is linear and residuals are scattered in a linear fashion indicating that a relationship exists between response variable and `trestbps`.
+
+#### Standardized residuals vs thalach
+
+```{r}
+plot(x = data$thalach, y = stand.resid, ylim = c(min(-3, stand.resid), max(3, stand.resid)), ylab = "Standardized Pearson residuals", xlab = "thalach")
+abline(h = c(-3,-2,0,2,3), lty = "dotted", col = "red")
+
+ord.dist2 <- order(data$thalach)
+smooth.stand2 <- loess(formula = target ~ thalach, data = data)
+lines(x = data$thalach[ord.dist2], y = predict(smooth.stand2)[ord.dist2],lty = "solid", col = "red")
+```
+
+Looking at standardized pearson residuals for `thalach` explanatory variable, we can see that variance throughout the range is same except for few outliers. This tells us that the current form of `thalach` is appropriate for the model.
+
+From the loess curve, it seems that standardized predicted to residuals is linear and residuals are scattered in a linear fashion indicating that a relationship exists between response variable and `thalach`.
+
+#### Binned residual plot
+
+Residuals are observed minus expected values. When working with logistic regression, target and residuals both are discrete hence plot of raw residuals from logistic regression is not useful. Due to this reason, binned residuals plot are much more useful with logistic regression.
+
+```{r}
+binnedplot(fitted(step.model), 
+           residuals(step.model, type = "response"), 
+           nclass = NULL, 
+           xlab = "Expected Values", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+In the binned residual plot, most of the data points are contained in the ±2 SE band and hence the model is appropriate.
+
+### Task 2.3: Response Analysis<a name="resp"></a>
+
+#### Exang vs response
+
+```{r}
+PlotXTabs(data, exang, target)
+```
+
+From the above bar chart we can see that for most people who are diagnosed with heart disease, exercise induced angina is not the case.Whereas, people who have exercise induced angina are not susceptible to heart disesases.
+
+#### Ca vs response
+
+```{r}
+PlotXTabs(data, ca, target)
+```
+
+From the above bar chart we can see that for most people who are diagnosed with heart disease, number of major vessels is not the case is 0.
+
+### Task 2.4: Goodness of Fit<a name="gof"></a>
+
+First we calculated the ratio of residual deviance to residual degree of freedom commonly denoted as D/(M-p).
+
+```{r}
+
+res.dev <- step.model$deviance
+res.dof <- step.model$df.residual
+
+dev.by.res <- res.dev / res.dof
+cat("Residual deviance/Degree of freedom: ", dev.by.res)
+
+```
+
+Next we calculated the thresholds.
+
+```{r}
+thresh.2 <- round(1 + 2*sqrt(2/step.model$df.residual), 2)
+thresh.3 <- round(1 + 3*sqrt(2/step.model$df.residual), 2)
+ 
+cat("Threshold 2: ", thresh.2, "\n")
+cat("Threshold 3: ", thresh.3, "\n")
+```
+Since the ratio of residual deviance and residual degree of freedom is not too far away from 1, we can assume that our model is appropriate. Also, both the threshold values are greater than the ratio of residual deviance and residual degree of freedom indicating that the model is a good fit.
+
+
+### Task 2.5: Confidence Interval<a name="ci"></a>
+
+#### CIs using profiled log-likelihood
+```{r}
+confint(step.model)
+```
+
+#### CIs using standard errors
+```{r}
+confint.default(step.model)
+```
+
+### Task 2.6: Hypothesis Tests<a name="ht"></a>
+
+We have already seen Wald test statistics in the summary output of our reduced model. Now we are performing the LR test using `Anova()`.
+
+```{r}
+anv <- Anova(mod = step.model, test = "LR")
+
+names <- row.names(anv)
+
+ht.res <- data.frame(names)
+ht.res$PValue <- round(anv$`Pr(>Chisq)`, 3)
+ht.res <- transform(ht.res, H0=paste("Coefficent for ",ht.res$names, "is 0"))
+ht.res <- transform(ht.res, HA=paste("Coefficent for ",ht.res$names, "is not 0"))
+ht.res <- transform(ht.res, "Test result"= ifelse(PValue<=0.05, "Reject H0 as p-Value is small", "Cannot reject H0 as p-Value is not small"))
+ht.res
+```
+
+In all the cases where we rejected H0, there is sufficient evidence to indicate that the explanatory variable in question has an effect on the probability of presence of heart disease given that all the other explanatory variables are in the model.
+
+### Task 2.7: Sensitivity Analysis<a name="sa"></a>
+
+#### Odds Ratio for `thalach`
+```{r}
+exp(step.model$coefficients[4])
+```
+The odds of a person suffering from heart disease increases by 1.016357 times for every 1 BPM increase in `thalach`.
+
+#### Odds Ratio for `trestbps`
+```{r}
+1/exp(step.model$coefficients[3])
+```
+The odds of a person suffering from heart disease decreases by 1.017108 times for every 1 mm Hg decrease in `trestbps`.
+
+#### Odds Ratio for all variables with Confidence Intervals
+
+```{r}
+
+exp.of.coef.and.ci <- exp(cbind(OR = coef(step.model), confint(step.model)))
+exp.of.coef.and.ci
+
+```
+
+## Task 3: Critique and Limitations<a name="cl"></a>
+
+Our dataset only had a total of 303 observations. In order to further enhance and make more precise research attempts, more patient data needs to be gathered to gain a better perspective of the problem in hand.
+
+In our phase 2 project we only focused on one model building approach. To compare the accuracies of various models we can try to select features using the Manual model building approach, semi-auto feature selection approach using SP-FSR, etc. Also , we have made an assumption in our model that all the explanatory variables are independent of each other. We can venture into the possibilities of establishing some interactions among the features.
+
+**Final Model Equation : **
+
+Logit(Probability of heart disease) ~ 2.59 - 1.315 * sex - 0.016 * trestbps + 0.016 * thalach - 0.753 * exang - 0.523 * oldpeak - 0.814 * ca - 1.999 * cp_0 - 1.041 * cp_1 + 0.649 * restecg_1 - 0.908 * slope_1 + 1.434 * thal_1 + 1.442 * thal_2
+
+## Task 4: Summary and Conclusions<a name="sc"></a>
+
+We began the preliminary data analysis in phase 1 by cleaning the data for redundant columns or explanatory variables. Also the dataset was checked for any spelling errors and typos. Subsequently, if any missing values found on the dataset were handled appropriately. The explanatory variables were then converted to the required data type using the `astype()` method. After summarizing the statistics for both continuous and categorical features we dived into the explanatory analysis of the dataset. By plotting univariate, bi-variate and multivariate plots various relationships with respect to the response variable were established. From the plots we could clearly see the importance of features like `exang`, `trestbps`, and `sex` with respect to the response variable. After encoding our dataset for modeling we began our phase 2 i.e. statistical modeling of our data.
+
+In phase 2 analysis we fit our data to a logistic regression model, firstly, with the full model using the `glm()` function. Using the `anova()` function ,all predictor variables were found to be highly significant as the values of p  < 0.05, demonstrating that they all contribute to the predictive power of the final model. We then performed model selection using the stepwise search algorithm using both forward and backward model selection. Using random data values we estimated the probability of a person having a heart condition and not having a heart condition. The estimated probability for a person to have a heart disease with actual value as 1 was found to be 90.23% and the probability for a person to have a heart disease with actual value as 0 was found to be 9.224%.The residual analysis for ‘trestbps’ and ‘thalach’ showed that the current form of the explanatory variables were in an appropriate form. The goodness of fit test showed that the reduced model was a good fit for our data. Performing sensitivity analysis i.e. Odds Ratio we concluded that for explanatory variables like `trestbps`, `thalach` and `sex` had a significant impact on the response variable.
+
+## References<a name="ref"></a>
+
+1. Heart Disease UCI. (2020). Retrieved 28 October 2020, from https://www.kaggle.com/ronitf/heart-disease-uci
+2. Webb, J. (2020). Course Notes for IS 6489, Statistics and Predictive Analytics. Retrieved 1 November 2020, from https://bookdown.org/jefftemplewebb/IS-6489/logistic-regression.html#assessing-logistic-model-fit
+3. Packages, O., Power, S., Output, A., Examples, D., Questions, F., & Examples, T. et al. (2020). Logit Regression | R Data Analysis Examples. Retrieved 1 November 2020, from https://stats.idre.ucla.edu/r/dae/logit-regression/
